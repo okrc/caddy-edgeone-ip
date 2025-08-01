@@ -1,8 +1,7 @@
-package edgeone
+package caddy_edgeone_ip
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"net/netip"
 	"sync"
@@ -11,6 +10,7 @@ import (
 	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
+	"github.com/pkg/errors"
 )
 
 const endpoint = "teo.tencentcloudapi.com"
@@ -20,16 +20,27 @@ func init() {
 	caddy.RegisterModule(EdgeOneIPRange{})
 }
 
-type EdgeOneIPRange struct {
-	ZoneId    string         `json:"zone_id"`
-	SecretId  string         `json:"secret_id"`
-	SecretKey string         `json:"secret_key"`
-	Interval  caddy.Duration `json:"interval,omitempty"`
-	Timeout   caddy.Duration `json:"timeout,omitempty"`
+const (
+	areaGlobal        = "global"
+	areaMainlandChina = "mainland-china"
+	areaOverseas      = "overseas"
+)
 
-	ranges []netip.Prefix
-	ctx    caddy.Context
-	lock   *sync.RWMutex
+type EdgeOneIPRange struct {
+	ZoneId    string `json:"zone_id,omitempty"`
+	SecretId  string `json:"secret_id,omitempty"`
+	SecretKey string `json:"secret_key,omitempty"`
+
+	Area string `json:"area,omitempty"`
+
+	Version  string         `json:"version,omitempty"`
+	Interval caddy.Duration `json:"interval,omitempty"`
+	Timeout  caddy.Duration `json:"timeout,omitempty"`
+
+	useOriginACL bool
+	ranges       []netip.Prefix
+	ctx          caddy.Context
+	lock         *sync.RWMutex
 }
 
 func (EdgeOneIPRange) CaddyModule() caddy.ModuleInfo {
@@ -51,27 +62,17 @@ func (s *EdgeOneIPRange) getPrefixes() ([]netip.Prefix, error) {
 	ctx, cancel := s.getContext()
 	defer cancel()
 
-	requestData := DescribeOriginACLRequest{ZoneId: s.ZoneId}
-	resp, err := s.doAPIRequest(ctx, "DescribeOriginACL", requestData.ToJsonString())
-	if err != nil {
-		return nil, err
-	}
-
-	var response DescribeOriginACLResponse
-	if err := response.FromJsonString(resp); err != nil {
-		return nil, err
-	}
-	if response.Response.Error != nil {
-		return nil, errors.New(response.Response.Error.Message)
-	}
+	var err error
 	var prefixes []netip.Prefix
-	for _, ip := range append(response.Response.OriginACLInfo.CurrentOriginACL.EntireAddresses.IPv4,
-		response.Response.OriginACLInfo.CurrentOriginACL.EntireAddresses.IPv6...) {
-		prefix, err := caddyhttp.CIDRExpressionToPrefix(ip)
+	if s.useOriginACL {
+		prefixes, err = s.OriginACLPrefixes(ctx)
 		if err != nil {
-			return nil, err
+			s.useOriginACL = false
+			println(err.Error())
 		}
-		prefixes = append(prefixes, prefix)
+	}
+	if !s.useOriginACL {
+		prefixes, err = s.OriginPrefixes(ctx)
 	}
 	return prefixes, nil
 }
@@ -104,6 +105,15 @@ func (s *EdgeOneIPRange) refreshLoop() {
 func (s *EdgeOneIPRange) Provision(ctx caddy.Context) error {
 	s.ctx = ctx
 	s.lock = new(sync.RWMutex)
+	if s.SecretId == "" || s.SecretKey == "" || s.ZoneId == "" {
+		s.useOriginACL = true
+	}
+	if s.Version != "" && s.Version != "v4" && s.Version != "v6" {
+		return errors.Errorf("invalid version: %q (must be \"v4\" or \"v6\")", s.Version)
+	}
+	if s.Area != "" && s.Area == areaGlobal || s.Area == areaMainlandChina || s.Area == areaOverseas {
+		return errors.Errorf("invalid area: %q (must be \"%q\", \"%q\" or \"%q\")", s.Area, areaGlobal, areaMainlandChina, areaOverseas)
+	}
 	go s.refreshLoop()
 	return nil
 }
@@ -131,17 +141,30 @@ func (m *EdgeOneIPRange) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 	for nesting := d.Nesting(); d.NextBlock(nesting); {
 		switch d.Val() {
 		case "zone_id":
-			if d.NextArg() {
-				m.ZoneId = d.Val()
+			if !d.NextArg() {
+				return d.ArgErr()
 			}
+			m.ZoneId = d.Val()
 		case "secret_id":
-			if d.NextArg() {
-				m.SecretId = d.Val()
+			if !d.NextArg() {
+				return d.ArgErr()
 			}
+			m.SecretId = d.Val()
 		case "secret_key":
-			if d.NextArg() {
-				m.SecretKey = d.Val()
+			if !d.NextArg() {
+				return d.ArgErr()
 			}
+			m.SecretKey = d.Val()
+		case "area":
+			if !d.NextArg() {
+				return d.ArgErr()
+			}
+			m.Area = d.Val()
+		case "version":
+			if !d.NextArg() {
+				return d.ArgErr()
+			}
+			m.Version = d.Val()
 		case "interval":
 			if !d.NextArg() {
 				return d.ArgErr()
@@ -165,9 +188,6 @@ func (m *EdgeOneIPRange) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 		}
 	}
 
-	if m.SecretId == "" || m.SecretKey == "" || m.ZoneId == "" {
-		return d.Err("missing required field: zone_id, secret_id, or secret_key")
-	}
 	return nil
 }
 

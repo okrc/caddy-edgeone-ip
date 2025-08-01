@@ -1,4 +1,4 @@
-package edgeone
+package caddy_edgeone_ip
 
 import (
 	"crypto/hmac"
@@ -19,12 +19,12 @@ const (
 
 func tencentCloudSigner(secretId string, secretKey string, r *http.Request, action string, payload string, service string) {
 	token := ""
-	host := edgeOneService + ".tencentcloudapi.com"
+	host := service + ".tencentcloudapi.com"
 	algorithm := "TC3-HMAC-SHA256"
 	var timestamp = time.Now().Unix()
 
 	// step 1: build canonical request string
-	httpRequestMethod := "POST"
+	httpRequestMethod := http.MethodPost
 	canonicalURI := "/"
 	canonicalQueryString := ""
 	contentType := "application/json; charset=utf-8"

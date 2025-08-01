@@ -1,4 +1,4 @@
-package edgeone
+package caddy_edgeone_ip
 
 import "encoding/json"
 
