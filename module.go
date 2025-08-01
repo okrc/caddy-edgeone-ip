@@ -68,7 +68,7 @@ func (s *EdgeOneIPRange) getPrefixes() ([]netip.Prefix, error) {
 		prefixes, err = s.OriginACLPrefixes(ctx)
 		if err != nil {
 			s.useOriginACL = false
-			println(err.Error())
+			caddy.Log().Error(err.Error())
 		}
 	}
 	if !s.useOriginACL {
@@ -105,7 +105,7 @@ func (s *EdgeOneIPRange) refreshLoop() {
 func (s *EdgeOneIPRange) Provision(ctx caddy.Context) error {
 	s.ctx = ctx
 	s.lock = new(sync.RWMutex)
-	if s.SecretId == "" || s.SecretKey == "" || s.ZoneId == "" {
+	if s.SecretId != "" && s.SecretKey != "" && s.ZoneId != "" {
 		s.useOriginACL = true
 	}
 	if s.Version != "" && s.Version != "v4" && s.Version != "v6" {
