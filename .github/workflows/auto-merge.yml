@@ -11,11 +11,11 @@ permissions:
   pull-requests: write
 jobs:
   auto-merge:
-    if: ${{ github.actor == 'dependabot[bot]' }}
+    if: ${{ github.actor == 'dependabot[bot]' && contains(join(github.event.pull_request.labels.*.name, ','), 'dependencies') }}
     runs-on: ubuntu-latest
     steps:
       - name: Merge for Dependabot PRs
-        run: gh pr merge $PR_URL --auto --squash
+        run: gh pr merge "$PR_URL" --auto --squash
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
