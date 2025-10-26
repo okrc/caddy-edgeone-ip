@@ -7,10 +7,11 @@ import (
 	"sync"
 	"time"
 
+	"fmt"
+
 	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
-	"github.com/pkg/errors"
 )
 
 const endpoint = "teo.tencentcloudapi.com"
@@ -109,10 +110,10 @@ func (s *EdgeOneIPRange) Provision(ctx caddy.Context) error {
 		s.useOriginACL = true
 	}
 	if s.Version != "" && s.Version != "v4" && s.Version != "v6" {
-		return errors.Errorf("invalid version: %q (must be \"v4\" or \"v6\")", s.Version)
+		return fmt.Errorf("invalid version: %q (must be \"v4\" or \"v6\")", s.Version)
 	}
 	if s.Area != "" && s.Area == areaGlobal || s.Area == areaMainlandChina || s.Area == areaOverseas {
-		return errors.Errorf("invalid area: %q (must be \"%q\", \"%q\" or \"%q\")", s.Area, areaGlobal, areaMainlandChina, areaOverseas)
+		return fmt.Errorf("invalid area: %q (must be \"%q\", \"%q\" or \"%q\")", s.Area, areaGlobal, areaMainlandChina, areaOverseas)
 	}
 	go s.refreshLoop()
 	return nil
